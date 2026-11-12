@@ -1,0 +1,2378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DutyPulse Command — Interactive Officer Duty Roster & Analytics</title>
+    <!-- Inter Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        /* Smooth transitions for stacked bar heights */
+        .bar-segment {
+            transition: height 0.45s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease;
+        }
+        .bar-column:hover .bar-pill {
+            transform: translateY(-3px) scale(1.06);
+        }
+        .bar-pill {
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        /* Subtle custom scrollbars for horizontal charts & sheets on mobile */
+        .chart-scroll::-webkit-scrollbar {
+            height: 6px;
+        }
+        .chart-scroll::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 999px;
+        }
+        .chart-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 999px;
+        }
+        .chart-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.95) translateY(6px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-pop {
+            animation: popIn 0.2s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-indigo-100 selection:text-indigo-900">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full px-4 sm:px-0"></div>
+
+    <!-- Custom Confirmation Modal (Replaces native confirm()) -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-200 animate-pop">
+            <div class="flex items-start gap-3.5">
+                <div class="p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </div>
+                <div class="flex-1">
+                    <h3 id="confirm-modal-title" class="text-base font-bold text-slate-900">Confirm Action</h3>
+                    <p id="confirm-modal-message" class="text-sm text-slate-600 mt-1">Are you sure you want to proceed?</p>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-2.5">
+                <button type="button" onclick="closeConfirmModal()" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+                    Cancel
+                </button>
+                <button type="button" id="confirm-modal-action-btn" class="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm transition-colors">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Officer Name & Badge Modal -->
+    <div id="edit-officer-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-200 animate-pop">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                        <i data-lucide="user-pen" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Edit Officer Details</h3>
+                        <p class="text-xs text-slate-500">Updates name &amp; badge across charts, calendar &amp; sheets</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeEditOfficerModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form id="edit-officer-form" onsubmit="handleSaveOfficerEdit(event)" class="space-y-4">
+                <input type="hidden" id="edit-officer-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">Officer Name &amp; Rank</label>
+                    <input type="text" id="edit-officer-name" required
+                        class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">Badge / Service ID</label>
+                    <input type="text" id="edit-officer-badge" required
+                        class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="flex justify-end gap-2.5 pt-2">
+                    <button type="button" onclick="closeEditOfficerModal()" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Inline Edit Monthly Cell Modal (For Annual Jan-Dec Sheet) -->
+    <div id="edit-cell-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 border border-slate-200 animate-pop">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 id="cell-modal-title" class="text-base font-bold text-slate-900">Edit Monthly Duties</h3>
+                    <p id="cell-modal-subtitle" class="text-xs text-indigo-600 font-semibold mt-0.5">Officer &bull; Month</p>
+                </div>
+                <button type="button" onclick="closeEditCellModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form id="edit-cell-form" onsubmit="handleSaveCellEdit(event)" class="space-y-4">
+                <input type="hidden" id="cell-officer-id">
+                <input type="hidden" id="cell-ym">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-indigo-700 mb-1">Weekday Duties</label>
+                        <input type="number" id="cell-weekday-input" min="0" max="31" required
+                            class="w-full bg-indigo-50/60 border border-indigo-200 text-slate-900 text-base font-bold rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-emerald-700 mb-1">Weekend Duties</label>
+                        <input type="number" id="cell-weekend-input" min="0" max="15" required
+                            class="w-full bg-emerald-50/60 border border-emerald-200 text-slate-900 text-base font-bold rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                </div>
+                <div class="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2 flex items-center justify-between text-xs">
+                    <span class="text-slate-500 font-medium">Calculated Month Total:</span>
+                    <span id="cell-modal-preview-total" class="font-extrabold text-slate-900 text-sm">0 Duties</span>
+                </div>
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" onclick="closeEditCellModal()" class="px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+                        Update Cell
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Day-Wise Duty Assignment Modal (Calendar Date Click) -->
+    <div id="day-duty-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-200 animate-pop">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div id="day-modal-icon-box" class="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                        <i data-lucide="calendar-days" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 id="day-modal-title" class="text-base font-bold text-slate-900">Assign Duty</h3>
+                        <p id="day-modal-subtitle" class="text-xs font-semibold text-indigo-600 mt-0.5">Date &bull; Weekday</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeDayDutyModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">
+                Check the officer(s) who carried out duty on this date. Selecting or unchecking automatically updates their monthly &amp; bar chart totals.
+            </p>
+            <div id="day-modal-officer-list" class="max-h-64 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl mb-4">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="flex items-center justify-between gap-2">
+                <button type="button" onclick="clearDayDutyModal()" class="px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors">
+                    Clear Date
+                </button>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeDayDutyModal()" class="px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button" onclick="saveDayDutyModal()" class="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+                        Save Day Roster
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm shadow-indigo-200 shrink-0">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 leading-none">DutyPulse Command</h1>
+                        <span id="sync-status-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            Saved Locally
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-0.5 hidden sm:block">Officer Duty Roster, Day-Wise Calendar &amp; Workload Analytics</p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <!-- Reference Date Selector -->
+                <div class="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200/80 rounded-xl px-2.5 py-1.5" title="Reference Date used to compute Days Since Last Duty">
+                    <i data-lucide="calendar-clock" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span class="text-[11px] font-semibold text-slate-600 hidden lg:inline">Ref Date:</span>
+                    <input type="date" id="reference-date-input" value="2026-11-12" onchange="handleReferenceDateChange()"
+                        class="bg-transparent text-xs font-bold text-slate-900 focus:outline-none cursor-pointer">
+                </div>
+
+                <button type="button" onclick="exportCSV()" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors" title="Download CSV Report">
+                    <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-600"></i>
+                    <span class="hidden md:inline">Export CSV</span>
+                </button>
+                <button type="button" onclick="exportJSON()" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors" title="Backup Data as JSON">
+                    <i data-lucide="download" class="w-4 h-4 text-indigo-600"></i>
+                    <span class="hidden md:inline">Export JSON</span>
+                </button>
+                <label class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer" title="Restore Data from JSON Backup">
+                    <i data-lucide="upload" class="w-4 h-4 text-amber-600"></i>
+                    <span class="hidden md:inline">Import JSON</span>
+                    <input type="file" id="import-json-input" accept=".json,application/json" onchange="handleImportJSON(event)" class="hidden">
+                </label>
+                <button type="button" onclick="promptZeroAllDuties()" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl transition-colors" title="Set All Officer Duties to Zero (Keep Officers)">
+                    <i data-lucide="eraser" class="w-4 h-4"></i>
+                    <span>Zero All Duties</span>
+                </button>
+                <button type="button" onclick="promptResetData()" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors" title="Restore Default Zeroed Roster">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Reset Demo</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+
+        <!-- KPI Summary Strip -->
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Officers</span>
+                    <span class="p-2 bg-slate-100 text-slate-600 rounded-xl"><i data-lucide="users" class="w-4 h-4"></i></span>
+                </div>
+                <p id="kpi-officers" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">0</p>
+                <p class="text-xs text-slate-500 mt-1">Bars currently tracked</p>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-indigo-500">Weekday Duties</span>
+                    <span class="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="briefcase" class="w-4 h-4"></i></span>
+                </div>
+                <p id="kpi-weekday" class="text-2xl sm:text-3xl font-extrabold text-indigo-600 mt-2">0</p>
+                <p id="kpi-weekday-pct" class="text-xs text-slate-500 mt-1">0% of total workload</p>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-emerald-600">Weekend Duties</span>
+                    <span class="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="calendar-check" class="w-4 h-4"></i></span>
+                </div>
+                <p id="kpi-weekend" class="text-2xl sm:text-3xl font-extrabold text-emerald-600 mt-2">0</p>
+                <p id="kpi-weekend-pct" class="text-xs text-slate-500 mt-1">0% of total workload</p>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-amber-600">Longest Rest</span>
+                    <span class="p-2 bg-amber-50 text-amber-600 rounded-xl"><i data-lucide="clock" class="w-4 h-4"></i></span>
+                </div>
+                <p id="kpi-longest-rest" class="text-lg sm:text-xl font-extrabold text-slate-900 mt-2 truncate">—</p>
+                <p id="kpi-longest-rest-sub" class="text-xs text-slate-500 mt-1">Next eligible for rotation</p>
+            </div>
+        </section>
+
+        <!-- Primary Stacked Bar Graph Card -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <!-- Chart Header & Controls -->
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-900">Officer Duty Distribution Over Time</h2>
+                        <span id="active-period-badge" class="px-2.5 py-0.5 text-xs font-semibold bg-indigo-50 text-indigo-700 rounded-full">All Recorded Months</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                        Stacked bar chart divided into <span class="font-semibold text-indigo-600">Weekday</span> and <span class="font-semibold text-emerald-600">Weekend</span> duties. Click any officer label below a bar to edit their name.
+                    </p>
+                </div>
+
+                <!-- Time-Period Filter, Sort & Save Bar Image -->
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                        <i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i>
+                        <select id="period-select" onchange="handlePeriodChange()" class="bg-transparent text-xs sm:text-sm font-medium text-slate-700 focus:outline-none cursor-pointer">
+                            <option value="ALL">Period: All Time (Cumulative)</option>
+                            <option value="2026-11">This Month (Nov 2026)</option>
+                            <option value="2026-10">Last Month (Oct 2026)</option>
+                            <option value="Q4-2026">Quarter 4 (Oct–Dec 2026)</option>
+                            <option value="Q3-2026">Quarter 3 (Jul–Sep 2026)</option>
+                            <option value="Q2-2026">Quarter 2 (Apr–Jun 2026)</option>
+                            <option value="Q1-2026">Quarter 1 (Jan–Mar 2026)</option>
+                            <option value="CUSTOM">Custom Month...</option>
+                        </select>
+                    </div>
+
+                    <input type="month" id="custom-month-picker" value="2026-11" onchange="renderDashboard()" class="hidden bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+
+                    <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                        <i data-lucide="arrow-up-down" class="w-4 h-4 text-slate-400"></i>
+                        <select id="sort-select" onchange="renderDashboard()" class="bg-transparent text-xs sm:text-sm font-medium text-slate-700 focus:outline-none cursor-pointer">
+                            <option value="total-desc">Sort: Highest Total</option>
+                            <option value="total-asc">Sort: Lowest Total</option>
+                            <option value="rest-desc">Sort: Most Days Since Duty</option>
+                            <option value="name-asc">Sort: Officer Name (A–Z)</option>
+                            <option value="weekday-desc">Sort: Weekday Duties</option>
+                            <option value="weekend-desc">Sort: Weekend Duties</option>
+                        </select>
+                    </div>
+
+                    <button type="button" onclick="exportChartImage('bars')" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors" title="Download Stacked Bar Graph as PNG Image">
+                        <i data-lucide="image-down" class="w-4 h-4"></i>
+                        <span>Save Bar Chart PNG</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Legend Bar -->
+            <div class="px-5 sm:px-6 py-3 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-5 text-xs sm:text-sm font-medium">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3.5 h-3.5 rounded-sm bg-indigo-600 inline-block shadow-xs"></span>
+                        <span class="text-slate-700">Weekday Duties (Mon–Fri)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3.5 h-3.5 rounded-sm bg-emerald-500 inline-block shadow-xs"></span>
+                        <span class="text-slate-700">Weekend Duties (Sat–Sun)</span>
+                    </div>
+                </div>
+                <div class="text-xs text-slate-400 flex items-center gap-1.5">
+                    <span class="px-2 py-0.5 bg-slate-900 text-white font-bold rounded-full text-[10px]">24</span>
+                    <span>Total duties displayed on top of each officer's bar</span>
+                </div>
+            </div>
+
+            <!-- Interactive Stacked Bar Chart Canvas -->
+            <div class="p-5 sm:p-6">
+                <!-- Empty State -->
+                <div id="chart-empty-state" class="hidden py-16 text-center">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-800">No Officers on Roster</h3>
+                    <p class="text-sm text-slate-500 mt-1 max-w-sm mx-auto">Add a new officer bar below to start tracking weekday and weekend duty distributions.</p>
+                </div>
+
+                <!-- Chart Canvas Wrapper -->
+                <div id="chart-active-area" class="flex">
+                    <!-- Dynamic Y-Axis Scale -->
+                    <div id="chart-y-axis" class="w-10 sm:w-12 h-72 sm:h-80 flex flex-col justify-between items-end pr-2.5 text-[11px] font-semibold text-slate-400 select-none pb-1">
+                        <span>40</span>
+                        <span>30</span>
+                        <span>20</span>
+                        <span>10</span>
+                        <span>0</span>
+                    </div>
+
+                    <!-- Scrollable Plot Area -->
+                    <div class="flex-1 overflow-x-auto chart-scroll pb-2">
+                        <div id="chart-plot-canvas" class="relative h-72 sm:h-80 min-w-full border-b-2 border-slate-200 flex items-end justify-around gap-3 sm:gap-6 px-3 sm:px-6 pt-10">
+                            <!-- Horizontal Gridlines -->
+                            <div class="absolute inset-x-0 bottom-0 h-full flex flex-col justify-between pointer-events-none">
+                                <div class="border-t border-dashed border-slate-200/80 w-full"></div>
+                                <div class="border-t border-dashed border-slate-200/80 w-full"></div>
+                                <div class="border-t border-dashed border-slate-200/80 w-full"></div>
+                                <div class="border-t border-dashed border-slate-200/80 w-full"></div>
+                                <div class="w-full"></div>
+                            </div>
+
+                            <!-- Dynamic Officer Stacked Bars Injected Here -->
+                            <div id="bars-container" class="relative z-10 w-full h-full flex items-end justify-around gap-3 sm:gap-6"></div>
+                        </div>
+
+                        <!-- X-Axis Officer Labels (Click to Edit Officer Name) -->
+                        <div id="labels-container" class="min-w-full flex items-start justify-around gap-3 sm:gap-6 px-3 sm:px-6 pt-2.5"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Rest & Turnaround Status Strip (Days Since Last Duty) -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900">Rest &amp; Turnaround Status (Days Since Last Duty)</h2>
+                        <p class="text-xs text-slate-500">Sorted from longest rest period to most recent duty — tap "+ Log Ref Date" to assign duty immediately</p>
+                    </div>
+                </div>
+                <span id="reference-today-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold self-start sm:self-auto">
+                    <i data-lucide="calendar-clock" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span>Ref Date: Thu, 12 Nov 2026</span>
+                </span>
+            </div>
+            <div id="rest-status-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </section>
+
+        <!-- Interactive Monthly Duty Calendar + Quick Daily Duty Entry -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-900">Daily Duty Calendar</h2>
+                        <span class="px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 rounded-full">Click any date cell to assign or edit officers</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+                        Shows who carried out duty on each day. Logging a date automatically updates that officer's Weekday or Weekend bar count.
+                    </p>
+                </div>
+
+                <!-- Calendar Month Selector & Export PNG -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="inline-flex items-center bg-slate-100 rounded-xl p-1">
+                        <button type="button" onclick="shiftCalendarMonth(-1)" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors" title="Previous Month">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <input type="month" id="calendar-month-input" value="2026-11" onchange="renderDashboard()"
+                            class="bg-transparent text-xs sm:text-sm font-bold text-slate-900 px-2 focus:outline-none cursor-pointer">
+                        <button type="button" onclick="shiftCalendarMonth(1)" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors" title="Next Month">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+
+                    <button type="button" onclick="jumpCalendarToRefDate()" class="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+                        Today
+                    </button>
+
+                    <button type="button" onclick="exportCalendarImage()" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+                        <i data-lucide="image-down" class="w-4 h-4"></i>
+                        <span>Save Calendar PNG</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Daily Duty Entry Bar -->
+            <form onsubmit="handleQuickDailyEntry(event)" class="bg-slate-50/90 border-b border-slate-200/80 px-5 sm:px-6 py-3.5 flex flex-col md:flex-row md:items-end gap-3">
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">1. Select Duty Date</label>
+                    <input type="date" id="quick-daily-date" value="2026-11-12" onchange="updateQuickDailyDayHint()" required
+                        class="w-full bg-white border border-slate-300 text-slate-900 text-xs sm:text-sm font-semibold rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="flex-1 min-w-[180px]">
+                    <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">2. Officer on Duty</label>
+                    <select id="quick-daily-officer" required
+                        class="w-full bg-white border border-slate-300 text-slate-900 text-xs sm:text-sm font-medium rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                <div class="flex items-center justify-between md:justify-start gap-3">
+                    <span id="quick-daily-type-pill" class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-100 text-indigo-700 whitespace-nowrap">
+                        Weekday Duty (Mon–Fri)
+                    </span>
+                    <button type="submit" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm transition-colors inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+                        <span>Assign Duty</span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Calendar Legend -->
+            <div class="px-5 sm:px-6 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-4">
+                    <span class="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                        <span class="w-2.5 h-2.5 rounded-xs bg-indigo-600"></span> Weekday (Mon–Fri)
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                        <span class="w-2.5 h-2.5 rounded-xs bg-emerald-500"></span> Weekend (Sat–Sun)
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                        <span class="w-2.5 h-2.5 rounded-full ring-2 ring-amber-500 bg-amber-100"></span> Ref Date
+                    </span>
+                </div>
+                <span id="calendar-summary-text" class="text-slate-500 font-medium">0 duty assignments in November 2026</span>
+            </div>
+
+            <!-- Sunday - Saturday Grid -->
+            <div class="overflow-x-auto chart-scroll">
+                <div class="min-w-[680px]">
+                    <div class="grid grid-cols-7 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <div class="py-2.5 px-2 text-center text-emerald-700 bg-emerald-50/50">Sun</div>
+                        <div class="py-2.5 px-2 text-center">Mon</div>
+                        <div class="py-2.5 px-2 text-center">Tue</div>
+                        <div class="py-2.5 px-2 text-center">Wed</div>
+                        <div class="py-2.5 px-2 text-center">Thu</div>
+                        <div class="py-2.5 px-2 text-center">Fri</div>
+                        <div class="py-2.5 px-2 text-center text-emerald-700 bg-emerald-50/50">Sat</div>
+                    </div>
+                    <div id="calendar-days-grid" class="grid grid-cols-7 divide-x divide-y divide-slate-200/80 bg-white">
+                        <!-- Calendar Day Cells Injected Here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Side-by-Side Control Cards: Feed Bulk Duty Data & Add New Officer Bar -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Card 1: Feed Duty Data for an Officer -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                        <i data-lucide="database-zap" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base sm:text-lg font-bold text-slate-900">Feed Monthly Duty Data</h3>
+                        <p class="text-xs text-slate-500">Record bulk weekday and weekend duties for any officer &amp; month</p>
+                    </div>
+                </div>
+
+                <form id="feed-duty-form" onsubmit="handleFeedDuty(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Select Officer</label>
+                            <select id="feed-officer-select" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Duty Month</label>
+                            <input type="month" id="feed-month-input" value="2026-11" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-indigo-700 mb-1.5">Weekday Duties</label>
+                            <input type="number" id="feed-weekday-input" min="0" max="31" value="2" required class="w-full bg-indigo-50/40 border border-indigo-200 text-slate-900 text-sm font-semibold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-emerald-700 mb-1.5">Weekend Duties</label>
+                            <input type="number" id="feed-weekend-input" min="0" max="15" value="1" required class="w-full bg-emerald-50/40 border border-emerald-200 text-slate-900 text-sm font-semibold rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                        <div class="flex items-center gap-4 text-xs font-medium text-slate-600">
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="feed-mode" value="add" checked class="text-indigo-600 focus:ring-indigo-500">
+                                <span>Add to existing count</span>
+                            </label>
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="feed-mode" value="set" class="text-indigo-600 focus:ring-indigo-500">
+                                <span>Overwrite month</span>
+                            </label>
+                        </div>
+
+                        <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm shadow-indigo-200 transition-all">
+                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                            <span>Update Duty Bar</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Card 2: Add a New Officer Bar Graph -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <i data-lucide="user-plus" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base sm:text-lg font-bold text-slate-900">Add Officer Bar Graph</h3>
+                        <p class="text-xs text-slate-500">Create a new officer column on the chart with optional starting duties</p>
+                    </div>
+                </div>
+
+                <form id="add-officer-form" onsubmit="handleAddOfficer(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Officer Name &amp; Rank</label>
+                            <input type="text" id="new-officer-name" placeholder="e.g., Insp. K. Verma" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Badge / ID</label>
+                            <input type="text" id="new-officer-badge" placeholder="e.g., OFF-108" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Start Month</label>
+                            <input type="month" id="new-officer-month" value="2026-11" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-xl px-2.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-indigo-700 mb-1.5">Init. Weekday</label>
+                            <input type="number" id="new-officer-weekday" min="0" max="31" value="0" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-emerald-700 mb-1.5">Init. Weekend</label>
+                            <input type="number" id="new-officer-weekend" min="0" max="15" value="0" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm font-semibold rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        </div>
+                    </div>
+
+                    <div class="pt-1 flex justify-end">
+                        <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all">
+                            <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                            <span>Add Officer Bar</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+        </section>
+
+        <!-- Officer Roster Management Table (Edit Name, Quick +/- Adjust & Delete Bar) -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">Officer Roster &amp; Quick-Edit Controls</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Edit officer names, check days since last duty, adjust counts inline, or delete an officer bar.</p>
+                </div>
+                <div class="relative w-full sm:w-64">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                    <input type="text" id="roster-search" oninput="renderDashboard()" placeholder="Search officer or badge..." class="w-full bg-slate-50 border border-slate-200 text-sm rounded-xl pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            <th class="py-3.5 px-5">Officer &amp; Badge</th>
+                            <th class="py-3.5 px-4 text-center">Last Duty / Rest</th>
+                            <th class="py-3.5 px-4 text-center text-indigo-600">Weekday Duties</th>
+                            <th class="py-3.5 px-4 text-center text-emerald-600">Weekend Duties</th>
+                            <th class="py-3.5 px-4 text-center">Total Duties</th>
+                            <th class="py-3.5 px-4 hidden md:table-cell">Split Distribution</th>
+                            <th class="py-3.5 px-5 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="roster-table-body" class="divide-y divide-slate-100 text-sm">
+                        <!-- Rows populated dynamically via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Editable Monthly Duty Chart Sheet (Jan - Dec Matrix) & PNG Image Download -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-900">Annual Monthly Duty Chart Sheet (Jan–Dec)</h2>
+                        <span class="px-2.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/80 rounded-full">Click any month cell to edit</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+                        Complete 12-month duty ledger showing Total and <span class="text-indigo-600 font-semibold">Weekday</span>/<span class="text-emerald-600 font-semibold">Weekend</span> breakdown per officer.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                        <span class="text-xs font-semibold text-slate-500">Year:</span>
+                        <select id="matrix-year-select" onchange="renderDashboard()" class="bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none cursor-pointer">
+                            <option value="2026" selected>2026</option>
+                            <option value="2025">2025</option>
+                            <option value="2027">2027</option>
+                        </select>
+                    </div>
+
+                    <button type="button" onclick="exportChartImage('matrix')" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition-colors">
+                        <i data-lucide="image-down" class="w-4 h-4"></i>
+                        <span>Download Monthly Chart Image (PNG)</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto chart-scroll">
+                <table class="w-full text-left border-collapse min-w-[960px]">
+                    <thead>
+                        <tr class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider">
+                            <th class="py-3 px-4 sticky left-0 bg-slate-900 z-10 min-w-[175px]">Officer</th>
+                            <th class="py-3 px-2 text-center">Jan</th>
+                            <th class="py-3 px-2 text-center">Feb</th>
+                            <th class="py-3 px-2 text-center">Mar</th>
+                            <th class="py-3 px-2 text-center">Apr</th>
+                            <th class="py-3 px-2 text-center">May</th>
+                            <th class="py-3 px-2 text-center">Jun</th>
+                            <th class="py-3 px-2 text-center">Jul</th>
+                            <th class="py-3 px-2 text-center">Aug</th>
+                            <th class="py-3 px-2 text-center">Sep</th>
+                            <th class="py-3 px-2 text-center">Oct</th>
+                            <th class="py-3 px-2 text-center">Nov</th>
+                            <th class="py-3 px-2 text-center">Dec</th>
+                            <th class="py-3 px-4 text-center bg-slate-800">Annual Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthly-matrix-body" class="divide-y divide-slate-200 text-xs">
+                        <!-- Matrix rows injected dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-slate-400">
+        DutyPulse Command &bull; All officer records &amp; daily calendar rosters are saved automatically in your browser's local storage.
+    </footer>
+
+    <script>
+        /**
+         * STORAGE KEYS & CONSTANTS
+         */
+        const STORAGE_KEY = 'dutypulse_officers_v4_zero';
+        const DAILY_LOGS_STORAGE_KEY = 'dutypulse_daily_logs_v4_zero';
+        const REF_DATE_STORAGE_KEY = 'dutypulse_ref_date_v4_zero';
+        const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const FULL_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        const DEFAULT_REF_DATE = '2026-11-12';
+
+        const DEFAULT_OFFICERS = [
+            {
+                id: 'off-1',
+                name: 'Capt. R. Sharma',
+                badge: 'OFF-101',
+                records: {}
+            },
+            {
+                id: 'off-2',
+                name: 'Lt. A. Patel',
+                badge: 'OFF-102',
+                records: {}
+            },
+            {
+                id: 'off-3',
+                name: 'Insp. M. Nair',
+                badge: 'OFF-103',
+                records: {}
+            },
+            {
+                id: 'off-4',
+                name: 'Sgt. D. Kulkarni',
+                badge: 'OFF-104',
+                records: {}
+            },
+            {
+                id: 'off-5',
+                name: 'Off. S. Reddy',
+                badge: 'OFF-105',
+                records: {}
+            },
+            {
+                id: 'off-6',
+                name: 'Off. P. Deshmukh',
+                badge: 'OFF-106',
+                records: {}
+            }
+        ];
+
+        const DEFAULT_DAILY_LOGS = {};
+
+        let officers = [];
+        let dailyLogs = {};
+        let activeModalDateStr = null;
+        let confirmCallback = null;
+
+        /**
+         * REFERENCE DATE & LOCAL STORAGE HELPERS
+         */
+        function getReferenceDateStr() {
+            const input = document.getElementById('reference-date-input');
+            if (input && input.value) return input.value;
+            return DEFAULT_REF_DATE;
+        }
+
+        function handleReferenceDateChange() {
+            const refStr = getReferenceDateStr();
+            try {
+                localStorage.setItem(REF_DATE_STORAGE_KEY, refStr);
+            } catch (e) {}
+            const qDateInput = document.getElementById('quick-daily-date');
+            if (qDateInput) {
+                qDateInput.value = refStr;
+                updateQuickDailyDayHint();
+            }
+            renderDashboard();
+        }
+
+        function loadState() {
+            try {
+                const savedRef = localStorage.getItem(REF_DATE_STORAGE_KEY);
+                const refInput = document.getElementById('reference-date-input');
+                if (savedRef && refInput) {
+                    refInput.value = savedRef;
+                }
+
+                const rawOfficers = localStorage.getItem(STORAGE_KEY);
+                const rawLogs = localStorage.getItem(DAILY_LOGS_STORAGE_KEY);
+                if (rawOfficers) {
+                    const parsed = JSON.parse(rawOfficers);
+                    if (Array.isArray(parsed)) {
+                        officers = parsed;
+                        dailyLogs = rawLogs ? JSON.parse(rawLogs) : {};
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading saved state:', err);
+            }
+            officers = JSON.parse(JSON.stringify(DEFAULT_OFFICERS));
+            dailyLogs = JSON.parse(JSON.stringify(DEFAULT_DAILY_LOGS));
+            saveState();
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(officers));
+                localStorage.setItem(DAILY_LOGS_STORAGE_KEY, JSON.stringify(dailyLogs));
+                const badge = document.getElementById('sync-status-badge');
+                if (badge) {
+                    badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Saved Locally`;
+                }
+            } catch (err) {
+                console.error('Error saving state:', err);
+                showToast('Could not persist changes to browser storage.', 'error');
+            }
+        }
+
+        /**
+         * TOAST & CONFIRMATION MODAL UI
+         */
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            const colors = type === 'error'
+                ? 'bg-rose-600 text-white'
+                : type === 'info'
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-emerald-600 text-white';
+
+            toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-semibold animate-pop ${colors}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(6px)';
+                toast.style.transition = 'all 0.2s ease';
+                setTimeout(() => toast.remove(), 220);
+            }, 2800);
+        }
+
+        function showConfirmModal(title, message, onConfirm) {
+            document.getElementById('confirm-modal-title').textContent = title;
+            document.getElementById('confirm-modal-message').textContent = message;
+            confirmCallback = onConfirm;
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeConfirmModal() {
+            confirmCallback = null;
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        document.getElementById('confirm-modal-action-btn').addEventListener('click', () => {
+            if (typeof confirmCallback === 'function') {
+                confirmCallback();
+            }
+            closeConfirmModal();
+        });
+
+        /**
+         * FILTER & AGGREGATION LOGIC
+         */
+        function handlePeriodChange() {
+            const select = document.getElementById('period-select');
+            const customPicker = document.getElementById('custom-month-picker');
+            if (select.value === 'CUSTOM') {
+                customPicker.classList.remove('hidden');
+            } else {
+                customPicker.classList.add('hidden');
+            }
+            renderDashboard();
+        }
+
+        function getActiveFilter() {
+            const val = document.getElementById('period-select').value;
+            if (val === 'ALL') {
+                return { value: 'ALL', label: 'All Recorded Months', months: null };
+            }
+            if (val === 'CUSTOM') {
+                const ym = document.getElementById('custom-month-picker').value || '2026-11';
+                const [y, m] = ym.split('-');
+                const mName = MONTH_NAMES[parseInt(m, 10) - 1] || m;
+                return { value: ym, label: `${mName} ${y}`, months: [ym] };
+            }
+            if (val.startsWith('Q')) {
+                const [q, year] = val.split('-');
+                const map = {
+                    Q1: [`${year}-01`, `${year}-02`, `${year}-03`],
+                    Q2: [`${year}-04`, `${year}-05`, `${year}-06`],
+                    Q3: [`${year}-07`, `${year}-08`, `${year}-09`],
+                    Q4: [`${year}-10`, `${year}-11`, `${year}-12`]
+                };
+                return { value: val, label: `${q} ${year}`, months: map[q] };
+            }
+            const [y, m] = val.split('-');
+            const mName = MONTH_NAMES[parseInt(m, 10) - 1] || m;
+            return { value: val, label: `${mName} ${y}`, months: [val] };
+        }
+
+        function getOfficerStats(officer, filter) {
+            let weekday = 0;
+            let weekend = 0;
+            const recs = officer.records || {};
+
+            Object.entries(recs).forEach(([ym, counts]) => {
+                if (!filter.months || filter.months.includes(ym)) {
+                    weekday += Number(counts.weekday || 0);
+                    weekend += Number(counts.weekend || 0);
+                }
+            });
+
+            return {
+                weekday,
+                weekend,
+                total: weekday + weekend
+            };
+        }
+
+        /**
+         * OFFICER CRUD & INLINE EDITING
+         */
+        function handleAddOfficer(event) {
+            event.preventDefault();
+            const nameInput = document.getElementById('new-officer-name');
+            const badgeInput = document.getElementById('new-officer-badge');
+            const monthInput = document.getElementById('new-officer-month');
+            const wkdyInput = document.getElementById('new-officer-weekday');
+            const wkndInput = document.getElementById('new-officer-weekend');
+
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            const badge = badgeInput.value.trim() || `OFF-${101 + officers.length}`;
+            const ym = monthInput.value || '2026-11';
+            const weekday = Math.max(0, parseInt(wkdyInput.value, 10) || 0);
+            const weekend = Math.max(0, parseInt(wkndInput.value, 10) || 0);
+
+            const newOfficer = {
+                id: 'off-' + Date.now(),
+                name,
+                badge,
+                records: {}
+            };
+
+            if (weekday > 0 || weekend > 0) {
+                newOfficer.records[ym] = { weekday, weekend };
+            }
+
+            officers.push(newOfficer);
+            saveState();
+            renderDashboard();
+
+            nameInput.value = '';
+            badgeInput.value = '';
+            wkdyInput.value = '0';
+            wkndInput.value = '0';
+            showToast(`Added officer bar for ${name}`);
+        }
+
+        function openEditOfficerModal(officerId) {
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+            document.getElementById('edit-officer-id').value = officer.id;
+            document.getElementById('edit-officer-name').value = officer.name;
+            document.getElementById('edit-officer-badge').value = officer.badge;
+
+            const modal = document.getElementById('edit-officer-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeEditOfficerModal() {
+            const modal = document.getElementById('edit-officer-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function handleSaveOfficerEdit(event) {
+            event.preventDefault();
+            const id = document.getElementById('edit-officer-id').value;
+            const newName = document.getElementById('edit-officer-name').value.trim();
+            const newBadge = document.getElementById('edit-officer-badge').value.trim();
+            if (!newName) return;
+
+            const officer = officers.find(o => o.id === id);
+            if (!officer) return;
+
+            officer.name = newName;
+            if (newBadge) officer.badge = newBadge;
+
+            saveState();
+            closeEditOfficerModal();
+            renderDashboard();
+            showToast(`Updated officer details to ${newName}`);
+        }
+
+        function deleteOfficer(officerId) {
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            showConfirmModal(
+                'Delete Officer Bar Graph',
+                `Are you sure you want to remove ${officer.name} (${officer.badge}) and all their duty records from the graph?`,
+                () => {
+                    officers = officers.filter(o => o.id !== officerId);
+                    Object.keys(dailyLogs).forEach(dateKey => {
+                        if (Array.isArray(dailyLogs[dateKey])) {
+                            dailyLogs[dateKey] = dailyLogs[dateKey].filter(id => id !== officerId);
+                            if (dailyLogs[dateKey].length === 0) {
+                                delete dailyLogs[dateKey];
+                            }
+                        }
+                    });
+                    saveState();
+                    renderDashboard();
+                    showToast(`Removed ${officer.name} from chart`, 'info');
+                }
+            );
+        }
+
+        /**
+         * BULK FEED & QUICK +/- STEPPER ADJUSTMENT
+         */
+        function handleFeedDuty(event) {
+            event.preventDefault();
+            const officerId = document.getElementById('feed-officer-select').value;
+            const ym = document.getElementById('feed-month-input').value || '2026-11';
+            const wkdy = Math.max(0, parseInt(document.getElementById('feed-weekday-input').value, 10) || 0);
+            const wknd = Math.max(0, parseInt(document.getElementById('feed-weekend-input').value, 10) || 0);
+            const mode = document.querySelector('input[name="feed-mode"]:checked').value;
+
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            if (!officer.records) officer.records = {};
+            if (!officer.records[ym]) officer.records[ym] = { weekday: 0, weekend: 0 };
+
+            if (mode === 'set') {
+                officer.records[ym].weekday = wkdy;
+                officer.records[ym].weekend = wknd;
+            } else {
+                officer.records[ym].weekday += wkdy;
+                officer.records[ym].weekend += wknd;
+            }
+
+            saveState();
+            renderDashboard();
+            showToast(`Updated ${officer.name} (${ym}): ${officer.records[ym].weekday} WkDay, ${officer.records[ym].weekend} WkEnd`);
+        }
+
+        function adjustDutyQuick(officerId, type, delta) {
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            const filter = getActiveFilter();
+            const targetYm = (filter.months && filter.months.length === 1)
+                ? filter.months[0]
+                : getReferenceDateStr().slice(0, 7);
+
+            if (!officer.records) officer.records = {};
+            if (!officer.records[targetYm]) officer.records[targetYm] = { weekday: 0, weekend: 0 };
+
+            if (delta < 0 && officer.records[targetYm][type] <= 0) {
+                // Find any month with >0 if viewing ALL
+                if (!filter.months) {
+                    const fallbackYm = Object.keys(officer.records).reverse().find(k => officer.records[k][type] > 0);
+                    if (fallbackYm) {
+                        officer.records[fallbackYm][type] = Math.max(0, officer.records[fallbackYm][type] + delta);
+                        saveState();
+                        renderDashboard();
+                        return;
+                    }
+                }
+                return;
+            }
+
+            officer.records[targetYm][type] = Math.max(0, (officer.records[targetYm][type] || 0) + delta);
+            saveState();
+            renderDashboard();
+        }
+
+        /**
+         * ANNUAL MONTHLY MATRIX CELL MODAL EDITING
+         */
+        function openEditCellModal(officerId, ym) {
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            const rec = (officer.records && officer.records[ym]) || { weekday: 0, weekend: 0 };
+            const [y, m] = ym.split('-');
+            const mName = FULL_MONTH_NAMES[parseInt(m, 10) - 1] || m;
+
+            document.getElementById('cell-officer-id').value = officerId;
+            document.getElementById('cell-ym').value = ym;
+            document.getElementById('cell-modal-title').textContent = `Edit ${mName} ${y} Duties`;
+            document.getElementById('cell-modal-subtitle').textContent = `${officer.name} (${officer.badge})`;
+            document.getElementById('cell-weekday-input').value = rec.weekday || 0;
+            document.getElementById('cell-weekend-input').value = rec.weekend || 0;
+            updateCellPreviewTotal();
+
+            const modal = document.getElementById('edit-cell-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeEditCellModal() {
+            const modal = document.getElementById('edit-cell-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function updateCellPreviewTotal() {
+            const w1 = parseInt(document.getElementById('cell-weekday-input').value, 10) || 0;
+            const w2 = parseInt(document.getElementById('cell-weekend-input').value, 10) || 0;
+            document.getElementById('cell-modal-preview-total').textContent = `${w1 + w2} Duties`;
+        }
+
+        function handleSaveCellEdit(event) {
+            event.preventDefault();
+            const officerId = document.getElementById('cell-officer-id').value;
+            const ym = document.getElementById('cell-ym').value;
+            const wkdy = Math.max(0, parseInt(document.getElementById('cell-weekday-input').value, 10) || 0);
+            const wknd = Math.max(0, parseInt(document.getElementById('cell-weekend-input').value, 10) || 0);
+
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            if (!officer.records) officer.records = {};
+            officer.records[ym] = { weekday: wkdy, weekend: wknd };
+
+            saveState();
+            closeEditCellModal();
+            renderDashboard();
+            showToast(`Updated ${officer.name} for ${ym}`);
+        }
+
+        /**
+         * DAY-WISE DUTY & CALENDAR HELPERS
+         */
+        function isWeekendDateStr(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const dt = new Date(y, m - 1, d);
+            const day = dt.getDay();
+            return day === 0 || day === 6;
+        }
+
+        function formatFullDateDisplay(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const dt = new Date(y, m - 1, d);
+            return `${DAY_NAMES_SHORT[dt.getDay()]}, ${d} ${FULL_MONTH_NAMES[m - 1]} ${y}`;
+        }
+
+        function updateQuickDailyDayHint() {
+            const dateVal = document.getElementById('quick-daily-date').value;
+            const pill = document.getElementById('quick-daily-type-pill');
+            if (!dateVal || !pill) return;
+            const isWknd = isWeekendDateStr(dateVal);
+            if (isWknd) {
+                pill.textContent = 'Weekend Duty (Sat/Sun)';
+                pill.className = 'px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-700 whitespace-nowrap';
+            } else {
+                pill.textContent = 'Weekday Duty (Mon–Fri)';
+                pill.className = 'px-2.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-100 text-indigo-700 whitespace-nowrap';
+            }
+        }
+
+        function applyDailyRosterChange(dateStr, newOfficerIds) {
+            const prevIds = Array.isArray(dailyLogs[dateStr]) ? dailyLogs[dateStr] : [];
+            const ym = dateStr.slice(0, 7);
+            const bucket = isWeekendDateStr(dateStr) ? 'weekend' : 'weekday';
+
+            // Decrement removed officers
+            prevIds.forEach(oid => {
+                if (!newOfficerIds.includes(oid)) {
+                    const off = officers.find(o => o.id === oid);
+                    if (off && off.records && off.records[ym]) {
+                        off.records[ym][bucket] = Math.max(0, (off.records[ym][bucket] || 0) - 1);
+                    }
+                }
+            });
+
+            // Increment newly added officers
+            newOfficerIds.forEach(oid => {
+                if (!prevIds.includes(oid)) {
+                    const off = officers.find(o => o.id === oid);
+                    if (off) {
+                        if (!off.records) off.records = {};
+                        if (!off.records[ym]) off.records[ym] = { weekday: 0, weekend: 0 };
+                        off.records[ym][bucket] = (off.records[ym][bucket] || 0) + 1;
+                    }
+                }
+            });
+
+            if (newOfficerIds.length > 0) {
+                dailyLogs[dateStr] = [...newOfficerIds];
+            } else {
+                delete dailyLogs[dateStr];
+            }
+        }
+
+        function logOfficerOnRefDate(officerId) {
+            const dateStr = getReferenceDateStr();
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            const existing = Array.isArray(dailyLogs[dateStr]) ? [...dailyLogs[dateStr]] : [];
+            if (existing.includes(officerId)) {
+                showToast(`${officer.name} is already logged on ${formatFullDateDisplay(dateStr)}`, 'info');
+                return;
+            }
+            existing.push(officerId);
+            applyDailyRosterChange(dateStr, existing);
+
+            const calInput = document.getElementById('calendar-month-input');
+            if (calInput) calInput.value = dateStr.slice(0, 7);
+
+            saveState();
+            renderDashboard();
+            const bucketLabel = isWeekendDateStr(dateStr) ? 'Weekend' : 'Weekday';
+            showToast(`Assigned ${officer.name} on ${formatFullDateDisplay(dateStr)} (+1 ${bucketLabel})`);
+        }
+
+        function handleQuickDailyEntry(event) {
+            event.preventDefault();
+            const dateStr = document.getElementById('quick-daily-date').value;
+            const officerId = document.getElementById('quick-daily-officer').value;
+            if (!dateStr || !officerId) return;
+
+            const officer = officers.find(o => o.id === officerId);
+            if (!officer) return;
+
+            const existing = Array.isArray(dailyLogs[dateStr]) ? [...dailyLogs[dateStr]] : [];
+            if (existing.includes(officerId)) {
+                showToast(`${officer.name} is already logged on ${formatFullDateDisplay(dateStr)}`, 'info');
+                return;
+            }
+
+            existing.push(officerId);
+            applyDailyRosterChange(dateStr, existing);
+
+            const calInput = document.getElementById('calendar-month-input');
+            if (calInput) calInput.value = dateStr.slice(0, 7);
+
+            saveState();
+            renderDashboard();
+            const bucketLabel = isWeekendDateStr(dateStr) ? 'Weekend' : 'Weekday';
+            showToast(`Logged ${officer.name} on ${formatFullDateDisplay(dateStr)} (+1 ${bucketLabel})`);
+        }
+
+        function openDayDutyModal(dateStr) {
+            if (officers.length === 0) {
+                showToast('Please add at least one officer first.', 'error');
+                return;
+            }
+            activeModalDateStr = dateStr;
+            const isWknd = isWeekendDateStr(dateStr);
+            const assignedIds = Array.isArray(dailyLogs[dateStr]) ? dailyLogs[dateStr] : [];
+
+            document.getElementById('day-modal-title').textContent = `Duty Roster — ${formatFullDateDisplay(dateStr)}`;
+            const sub = document.getElementById('day-modal-subtitle');
+            const iconBox = document.getElementById('day-modal-icon-box');
+
+            if (isWknd) {
+                sub.textContent = 'Weekend Duty (Sat/Sun) • +1 Weekend Count per Officer';
+                sub.className = 'text-xs font-semibold text-emerald-600 mt-0.5';
+                iconBox.className = 'p-2 bg-emerald-100 text-emerald-600 rounded-xl';
+            } else {
+                sub.textContent = 'Weekday Duty (Mon–Fri) • +1 Weekday Count per Officer';
+                sub.className = 'text-xs font-semibold text-indigo-600 mt-0.5';
+                iconBox.className = 'p-2 bg-indigo-100 text-indigo-600 rounded-xl';
+            }
+
+            const listContainer = document.getElementById('day-modal-officer-list');
+            listContainer.innerHTML = officers.map(off => {
+                const checked = assignedIds.includes(off.id) ? 'checked' : '';
+                const restInfo = getOfficerRestStats(off.id);
+                return `
+                    <label class="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" value="${off.id}" ${checked}
+                                class="day-modal-checkbox w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-900">${off.name}</p>
+                                <p class="text-[11px] text-slate-400">${off.badge}</p>
+                            </div>
+                        </div>
+                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${restInfo.badgeClass}">
+                            ${restInfo.label}
+                        </span>
+                    </label>
+                `;
+            }).join('');
+
+            const modal = document.getElementById('day-duty-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeDayDutyModal() {
+            activeModalDateStr = null;
+            const modal = document.getElementById('day-duty-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function clearDayDutyModal() {
+            if (!activeModalDateStr) return;
+            const targetDate = activeModalDateStr;
+            applyDailyRosterChange(targetDate, []);
+            saveState();
+            closeDayDutyModal();
+            renderDashboard();
+            showToast(`Cleared duty assignments for ${formatFullDateDisplay(targetDate)}`, 'info');
+        }
+
+        function saveDayDutyModal() {
+            if (!activeModalDateStr) return;
+            const targetDate = activeModalDateStr;
+            const checkedBoxes = document.querySelectorAll('.day-modal-checkbox:checked');
+            const selectedIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+            applyDailyRosterChange(targetDate, selectedIds);
+            saveState();
+            closeDayDutyModal();
+            renderDashboard();
+            showToast(`Saved duty roster for ${formatFullDateDisplay(targetDate)}`);
+        }
+
+        function shiftCalendarMonth(delta) {
+            const input = document.getElementById('calendar-month-input');
+            const [y, m] = (input.value || '2026-11').split('-').map(Number);
+            const dt = new Date(y, m - 1 + delta, 1);
+            input.value = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+            renderDashboard();
+        }
+
+        function jumpCalendarToRefDate() {
+            const refStr = getReferenceDateStr();
+            const input = document.getElementById('calendar-month-input');
+            if (input) input.value = refStr.slice(0, 7);
+            renderDashboard();
+        }
+
+        /**
+         * DAYS SINCE LAST DUTY CALCULATION
+         */
+        function getOfficerRestStats(officerId) {
+            const todayStr = getReferenceDateStr();
+            const [ty, tm, td] = todayStr.split('-').map(Number);
+            const todayDate = new Date(ty, tm - 1, td);
+
+            let lastCompletedDateStr = null;
+            let nextScheduledDateStr = null;
+
+            Object.entries(dailyLogs).forEach(([dateStr, ids]) => {
+                if (Array.isArray(ids) && ids.includes(officerId)) {
+                    if (dateStr <= todayStr) {
+                        if (!lastCompletedDateStr || dateStr > lastCompletedDateStr) {
+                            lastCompletedDateStr = dateStr;
+                        }
+                    } else {
+                        if (!nextScheduledDateStr || dateStr < nextScheduledDateStr) {
+                            nextScheduledDateStr = dateStr;
+                        }
+                    }
+                }
+            });
+
+            if (lastCompletedDateStr) {
+                const [ly, lm, ld] = lastCompletedDateStr.split('-').map(Number);
+                const lastDate = new Date(ly, lm - 1, ld);
+                const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+
+                if (diffDays === 0) {
+                    return {
+                        days: 0,
+                        lastDate: lastCompletedDateStr,
+                        label: 'On Duty (0d)',
+                        badgeClass: 'bg-indigo-100 text-indigo-700'
+                    };
+                }
+                if (diffDays === 1) {
+                    return {
+                        days: 1,
+                        lastDate: lastCompletedDateStr,
+                        label: '1 day ago',
+                        badgeClass: 'bg-amber-100 text-amber-800'
+                    };
+                }
+                const badgeClass = diffDays >= 5
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-100 text-slate-700';
+                return {
+                    days: diffDays,
+                    lastDate: lastCompletedDateStr,
+                    label: `${diffDays} days ago`,
+                    badgeClass
+                };
+            }
+
+            if (nextScheduledDateStr) {
+                const [ny, nm, nd] = nextScheduledDateStr.split('-').map(Number);
+                const nextDate = new Date(ny, nm - 1, nd);
+                const aheadDays = Math.round((nextDate - todayDate) / (1000 * 60 * 60 * 24));
+                return {
+                    days: 9999,
+                    lastDate: null,
+                    label: `Scheduled in ${aheadDays}d`,
+                    badgeClass: 'bg-sky-100 text-sky-700'
+                };
+            }
+
+            return {
+                days: 99999,
+                lastDate: null,
+                label: 'No duties yet',
+                badgeClass: 'bg-slate-100 text-slate-600'
+            };
+        }
+
+        function promptZeroAllDuties() {
+            showConfirmModal(
+                'Zero All Duties',
+                'This will set Weekday and Weekend duties to 0 across all months and clear the Daily Duty Calendar for every officer, while keeping all officer names and badge IDs intact.',
+                () => {
+                    officers = officers.map(off => ({
+                        ...off,
+                        records: {}
+                    }));
+                    dailyLogs = {};
+                    saveState();
+                    renderDashboard();
+                    showToast('All officer duty counts and calendar logs reset to 0', 'info');
+                }
+            );
+        }
+
+        function promptResetData() {
+            showConfirmModal(
+                'Reset Roster to Default (Zero Duties)',
+                'This will restore the default 6 officers with 0 duties across all months and an empty daily calendar. Any custom officers or entries will be cleared.',
+                () => {
+                    officers = JSON.parse(JSON.stringify(DEFAULT_OFFICERS));
+                    dailyLogs = JSON.parse(JSON.stringify(DEFAULT_DAILY_LOGS));
+                    const refInput = document.getElementById('reference-date-input');
+                    if (refInput) refInput.value = DEFAULT_REF_DATE;
+                    saveState();
+                    renderDashboard();
+                    showToast('Default roster restored with 0 duties', 'info');
+                }
+            );
+        }
+
+        /**
+         * EXPORT & IMPORT UTILITIES (CSV, JSON & PNG CHART IMAGES)
+         */
+        function exportCSV() {
+            const filter = getActiveFilter();
+            const headers = ['Officer Name', 'Badge ID', 'Days Since Last Duty', 'Last Duty Date', 'Period', 'Weekday Duties', 'Weekend Duties', 'Total Duties'];
+            const rows = officers.map(off => {
+                const stats = getOfficerStats(off, filter);
+                const rest = getOfficerRestStats(off.id);
+                const daysCol = rest.days >= 9999 ? 'N/A' : rest.days;
+                const lastCol = rest.lastDate || 'None';
+                return `"${off.name}","${off.badge}",${daysCol},"${lastCol}","${filter.label}",${stats.weekday},${stats.weekend},${stats.total}`;
+            });
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `officer_duties_${filter.value.toLowerCase()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('CSV report downloaded');
+        }
+
+        function exportJSON() {
+            const payload = {
+                version: 3,
+                exportedAt: new Date().toISOString(),
+                referenceDate: getReferenceDateStr(),
+                officers,
+                dailyLogs
+            };
+            const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
+            const link = document.createElement('a');
+            link.setAttribute('href', dataStr);
+            link.setAttribute('download', 'dutypulse_backup.json');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('JSON backup downloaded');
+        }
+
+        function handleImportJSON(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (Array.isArray(parsed)) {
+                        officers = parsed;
+                        dailyLogs = {};
+                    } else if (parsed && Array.isArray(parsed.officers)) {
+                        officers = parsed.officers;
+                        dailyLogs = parsed.dailyLogs || {};
+                        if (parsed.referenceDate) {
+                            const refInput = document.getElementById('reference-date-input');
+                            if (refInput) refInput.value = parsed.referenceDate;
+                        }
+                    } else {
+                        throw new Error('Invalid JSON structure');
+                    }
+                    saveState();
+                    renderDashboard();
+                    showToast('Backup restored successfully!');
+                } catch (err) {
+                    console.error('Import error:', err);
+                    showToast('Could not import file. Ensure it is a valid DutyPulse JSON backup.', 'error');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function triggerCanvasDownload(canvas, filename) {
+            canvas.toBlob(blob => {
+                if (!blob) return;
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }, 'image/png');
+        }
+
+        /**
+         * EXPORT STACKED BAR GRAPH OR MONTHLY LEDGER MATRIX AS PNG IMAGE
+         */
+        function exportChartImage(mode) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = 2;
+
+            if (mode === 'bars') {
+                const filter = getActiveFilter();
+                const sortMode = document.getElementById('sort-select').value;
+                const enriched = officers.map(o => ({
+                    ...o,
+                    stats: getOfficerStats(o, filter),
+                    rest: getOfficerRestStats(o.id)
+                }));
+                enriched.sort((a, b) => {
+                    if (sortMode === 'total-desc') return b.stats.total - a.stats.total;
+                    if (sortMode === 'total-asc') return a.stats.total - b.stats.total;
+                    if (sortMode === 'rest-desc') return b.rest.days - a.rest.days;
+                    if (sortMode === 'name-asc') return a.name.localeCompare(b.name);
+                    if (sortMode === 'weekday-desc') return b.stats.weekday - a.stats.weekday;
+                    if (sortMode === 'weekend-desc') return b.stats.weekend - a.stats.weekend;
+                    return 0;
+                });
+
+                const barSlotW = 120;
+                const width = Math.max(760, 120 + enriched.length * barSlotW);
+                const height = 460;
+
+                canvas.width = width * scale;
+                canvas.height = height * scale;
+                ctx.scale(scale, scale);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+
+                // Header Banner
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, width, 72);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 20px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(`DutyPulse Command — Officer Duty Chart (${filter.label})`, 24, 33);
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '12px Inter, sans-serif';
+                ctx.fillText('Indigo = Weekday Duties  •  Emerald = Weekend Duties  •  Top Badge = Total Duties', 24, 54);
+
+                const chartLeft = 65;
+                const chartRight = width - 30;
+                const chartTop = 115;
+                const chartBottom = 385;
+                const chartH = chartBottom - chartTop;
+
+                const maxTotal = Math.max(...enriched.map(o => o.stats.total), 10);
+                const yMax = Math.ceil(maxTotal / 10) * 10;
+
+                // Gridlines & Y-Axis
+                ctx.strokeStyle = '#e2e8f0';
+                ctx.lineWidth = 1;
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.fillStyle = '#64748b';
+                ctx.textAlign = 'right';
+
+                for (let step = 0; step <= 4; step++) {
+                    const val = Math.round((yMax / 4) * step);
+                    const y = chartBottom - (chartH * step) / 4;
+                    ctx.beginPath();
+                    ctx.moveTo(chartLeft, y);
+                    ctx.lineTo(chartRight, y);
+                    ctx.stroke();
+                    ctx.fillText(String(val), chartLeft - 10, y + 4);
+                }
+
+                // Bars
+                const slotWidth = (chartRight - chartLeft) / Math.max(enriched.length, 1);
+                const barW = Math.min(54, slotWidth * 0.56);
+
+                enriched.forEach((off, idx) => {
+                    const cx = chartLeft + slotWidth * idx + slotWidth / 2;
+                    const wkdyH = (off.stats.weekday / yMax) * chartH;
+                    const wkndH = (off.stats.weekend / yMax) * chartH;
+                    const totalH = wkdyH + wkndH;
+
+                    // Weekday bottom segment
+                    ctx.fillStyle = '#4f46e5';
+                    ctx.fillRect(cx - barW / 2, chartBottom - wkdyH, barW, wkdyH);
+
+                    // Weekend top segment
+                    ctx.fillStyle = '#10b981';
+                    ctx.fillRect(cx - barW / 2, chartBottom - totalH, barW, wkndH);
+
+                    // Total pill above bar
+                    const pillY = chartBottom - totalH - 26;
+                    ctx.fillStyle = '#0f172a';
+                    ctx.beginPath();
+                    ctx.roundRect(cx - 18, pillY, 36, 20, 10);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 11px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(String(off.stats.total), cx, pillY + 14);
+
+                    // Officer label below axis
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = 'bold 11px Inter, sans-serif';
+                    ctx.fillText(off.name.slice(0, 16), cx, chartBottom + 20);
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = '10px Inter, sans-serif';
+                    ctx.fillText(off.badge, cx, chartBottom + 35);
+                });
+
+                triggerCanvasDownload(canvas, `officer_bar_chart_${filter.value.toLowerCase()}.png`);
+                showToast('Stacked Bar Chart PNG image downloaded!');
+                return;
+            }
+
+            // Matrix (Jan-Dec Annual Sheet) PNG Export
+            const year = document.getElementById('matrix-year-select').value || '2026';
+            const nameColW = 190;
+            const monthColW = 68;
+            const totalColW = 90;
+            const width = nameColW + 12 * monthColW + totalColW + 40;
+            const rowH = 44;
+            const topOffset = 114;
+            const height = topOffset + Math.max(officers.length, 1) * rowH + 34;
+
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+            ctx.scale(scale, scale);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+
+            // Header Banner
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, 74);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`DutyPulse Command — Annual Duty Ledger (${year})`, 20, 34);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Inter, sans-serif';
+            ctx.fillText('Top Number = Monthly Total  •  Bottom Split = Weekday / Weekend Duties', 20, 55);
+
+            // Table Header
+            const startX = 20;
+            const headerY = 82;
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(startX, headerY, width - 40, 32);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('OFFICER & BADGE', startX + 12, headerY + 20);
+
+            ctx.textAlign = 'center';
+            MONTH_NAMES.forEach((m, i) => {
+                ctx.fillText(m.toUpperCase(), startX + nameColW + i * monthColW + monthColW / 2, headerY + 20);
+            });
+            ctx.fillText('TOTAL', startX + nameColW + 12 * monthColW + totalColW / 2, headerY + 20);
+
+            // Table Rows
+            officers.forEach((off, rIdx) => {
+                const ry = topOffset + rIdx * rowH;
+                ctx.fillStyle = rIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+                ctx.fillRect(startX, ry, width - 40, rowH);
+                ctx.strokeStyle = '#e2e8f0';
+                ctx.strokeRect(startX, ry, width - 40, rowH);
+
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#0f172a';
+                ctx.font = 'bold 12px Inter, sans-serif';
+                ctx.fillText(off.name, startX + 12, ry + 19);
+                ctx.fillStyle = '#64748b';
+                ctx.font = '10px Inter, sans-serif';
+                ctx.fillText(off.badge, startX + 12, ry + 34);
+
+                let annualTotal = 0;
+                ctx.textAlign = 'center';
+                for (let m = 1; m <= 12; m++) {
+                    const ym = `${year}-${String(m).padStart(2, '0')}`;
+                    const rec = (off.records && off.records[ym]) || { weekday: 0, weekend: 0 };
+                    const tot = (rec.weekday || 0) + (rec.weekend || 0);
+                    annualTotal += tot;
+
+                    const cx = startX + nameColW + (m - 1) * monthColW + monthColW / 2;
+                    ctx.fillStyle = tot > 0 ? '#0f172a' : '#94a3b8';
+                    ctx.font = 'bold 12px Inter, sans-serif';
+                    ctx.fillText(String(tot), cx, ry + 19);
+
+                    ctx.fillStyle = tot > 0 ? '#4f46e5' : '#cbd5e1';
+                    ctx.font = '10px Inter, sans-serif';
+                    ctx.fillText(`${rec.weekday || 0}d / ${rec.weekend || 0}e`, cx, ry + 34);
+                }
+
+                const totX = startX + nameColW + 12 * monthColW + totalColW / 2;
+                ctx.fillStyle = '#0f172a';
+                ctx.font = 'bold 13px Inter, sans-serif';
+                ctx.fillText(String(annualTotal), totX, ry + 26);
+            });
+
+            triggerCanvasDownload(canvas, `annual_duty_sheet_${year}.png`);
+            showToast('Annual Monthly Duty Chart PNG downloaded!');
+        }
+
+        /**
+         * EXPORT MONTHLY DUTY CALENDAR AS PNG IMAGE
+         */
+        function exportCalendarImage() {
+            const ym = document.getElementById('calendar-month-input').value || '2026-11';
+            const [year, month] = ym.split('-').map(Number);
+            const firstDay = new Date(year, month - 1, 1).getDay();
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+            const numWeeks = totalCells / 7;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = 2;
+
+            const width = 980;
+            const colW = (width - 40) / 7;
+            const rowH = 92;
+            const topOffset = 118;
+            const height = topOffset + numWeeks * rowH + 28;
+
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+            ctx.scale(scale, scale);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+
+            // Header Banner
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, 74);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`DutyPulse Command — ${FULL_MONTH_NAMES[month - 1]} ${year} Duty Calendar`, 24, 34);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Inter, sans-serif';
+            ctx.fillText('Daily Officer Assignment Schedule  •  Indigo = Weekday  •  Emerald = Weekend', 24, 55);
+
+            // Day Headers
+            const startX = 20;
+            const headerY = 84;
+            DAY_NAMES_SHORT.forEach((dName, idx) => {
+                const cx = startX + idx * colW;
+                const isWknd = idx === 0 || idx === 6;
+                ctx.fillStyle = isWknd ? '#ecfdf5' : '#f1f5f9';
+                ctx.fillRect(cx, headerY, colW, 30);
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.strokeRect(cx, headerY, colW, 30);
+
+                ctx.fillStyle = isWknd ? '#047857' : '#334155';
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(dName.toUpperCase(), cx + colW / 2, headerY + 19);
+            });
+
+            // Calendar Cells
+            for (let i = 0; i < totalCells; i++) {
+                const r = Math.floor(i / 7);
+                const c = i % 7;
+                const cx = startX + c * colW;
+                const cy = topOffset + r * rowH;
+                const dayNum = i - firstDay + 1;
+                const isWknd = c === 0 || c === 6;
+
+                ctx.fillStyle = (dayNum >= 1 && dayNum <= daysInMonth)
+                    ? (isWknd ? '#f0fdf4' : '#ffffff')
+                    : '#f8fafc';
+                ctx.fillRect(cx, cy, colW, rowH);
+                ctx.strokeStyle = '#e2e8f0';
+                ctx.strokeRect(cx, cy, colW, rowH);
+
+                if (dayNum >= 1 && dayNum <= daysInMonth) {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = isWknd ? '#047857' : '#1e293b';
+                    ctx.font = 'bold 12px Inter, sans-serif';
+                    ctx.fillText(String(dayNum), cx + 8, cy + 18);
+
+                    const assignedIds = Array.isArray(dailyLogs[dateStr]) ? dailyLogs[dateStr] : [];
+                    assignedIds.slice(0, 3).forEach((oid, idx) => {
+                        const off = officers.find(o => o.id === oid);
+                        if (!off) return;
+                        const shortName = off.name.replace(/^(Capt\.|Lt\.|Insp\.|Sgt\.|Off\.)\s+/i, '');
+                        const pillY = cy + 25 + idx * 20;
+
+                        ctx.fillStyle = isWknd ? '#10b981' : '#4f46e5';
+                        ctx.beginPath();
+                        ctx.roundRect(cx + 6, pillY, colW - 12, 16, 4);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 10px Inter, sans-serif';
+                        ctx.fillText(shortName.slice(0, 15), cx + 11, pillY + 11);
+                    });
+
+                    if (assignedIds.length > 3) {
+                        ctx.fillStyle = '#64748b';
+                        ctx.font = 'bold 9px Inter, sans-serif';
+                        ctx.fillText(`+${assignedIds.length - 3} more`, cx + 8, cy + rowH - 5);
+                    }
+                }
+            }
+
+            triggerCanvasDownload(canvas, `duty_calendar_${ym}.png`);
+            showToast('Monthly Duty Calendar PNG image downloaded!');
+        }
+
+        /**
+         * MASTER RENDER PIPELINE
+         */
+        function renderDashboard() {
+            const filter = getActiveFilter();
+            const sortMode = document.getElementById('sort-select').value;
+            const searchQuery = (document.getElementById('roster-search').value || '').toLowerCase().trim();
+
+            document.getElementById('active-period-badge').textContent = filter.label;
+
+            let enrichedOfficers = officers.map(off => ({
+                ...off,
+                stats: getOfficerStats(off, filter),
+                rest: getOfficerRestStats(off.id)
+            }));
+
+            enrichedOfficers.sort((a, b) => {
+                if (sortMode === 'total-desc') return b.stats.total - a.stats.total;
+                if (sortMode === 'total-asc') return a.stats.total - b.stats.total;
+                if (sortMode === 'rest-desc') return b.rest.days - a.rest.days;
+                if (sortMode === 'name-asc') return a.name.localeCompare(b.name);
+                if (sortMode === 'weekday-desc') return b.stats.weekday - a.stats.weekday;
+                if (sortMode === 'weekend-desc') return b.stats.weekend - a.stats.weekend;
+                return 0;
+            });
+
+            renderKPIs(enrichedOfficers);
+            renderStackedBarChart(enrichedOfficers);
+            renderRestStatusCards(enrichedOfficers);
+            renderMonthlyCalendar();
+            renderOfficerSelectDropdown();
+            renderRosterTable(enrichedOfficers, filter, searchQuery);
+            renderMonthlyMatrix(enrichedOfficers);
+
+            lucide.createIcons();
+        }
+
+        function renderKPIs(enrichedOfficers) {
+            const totalOfficers = enrichedOfficers.length;
+            const sumWkdy = enrichedOfficers.reduce((acc, o) => acc + o.stats.weekday, 0);
+            const sumWknd = enrichedOfficers.reduce((acc, o) => acc + o.stats.weekend, 0);
+            const grandTotal = sumWkdy + sumWknd;
+
+            const wkdyPct = grandTotal > 0 ? Math.round((sumWkdy / grandTotal) * 100) : 0;
+            const wkndPct = grandTotal > 0 ? 100 - wkdyPct : 0;
+
+            document.getElementById('kpi-officers').textContent = totalOfficers;
+            document.getElementById('kpi-weekday').textContent = sumWkdy;
+            document.getElementById('kpi-weekday-pct').textContent = `${wkdyPct}% of ${grandTotal} total duties`;
+            document.getElementById('kpi-weekend').textContent = sumWknd;
+            document.getElementById('kpi-weekend-pct').textContent = `${wkndPct}% of ${grandTotal} total duties`;
+
+            // Longest rest officer
+            const withCompletedDuty = enrichedOfficers.filter(o => o.rest.days < 9999);
+            if (withCompletedDuty.length > 0) {
+                const longest = [...withCompletedDuty].sort((a, b) => b.rest.days - a.rest.days)[0];
+                document.getElementById('kpi-longest-rest').textContent = `${longest.name} (${longest.rest.days}d)`;
+                document.getElementById('kpi-longest-rest-sub').textContent = `Last duty: ${longest.rest.lastDate}`;
+            } else {
+                document.getElementById('kpi-longest-rest').textContent = '—';
+                document.getElementById('kpi-longest-rest-sub').textContent = 'Log daily duties to track rest';
+            }
+        }
+
+        function renderStackedBarChart(enrichedOfficers) {
+            const emptyState = document.getElementById('chart-empty-state');
+            const activeArea = document.getElementById('chart-active-area');
+            const barsContainer = document.getElementById('bars-container');
+            const labelsContainer = document.getElementById('labels-container');
+            const yAxis = document.getElementById('chart-y-axis');
+
+            if (enrichedOfficers.length === 0) {
+                emptyState.classList.remove('hidden');
+                activeArea.classList.add('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            activeArea.classList.remove('hidden');
+
+            const maxVal = Math.max(...enrichedOfficers.map(o => o.stats.total), 10);
+            const yMax = Math.ceil(maxVal / 10) * 10;
+
+            yAxis.innerHTML = [4, 3, 2, 1, 0].map(step =>
+                `<span>${Math.round((yMax / 4) * step)}</span>`
+            ).join('');
+
+            barsContainer.innerHTML = enrichedOfficers.map(off => {
+                const { weekday, weekend, total } = off.stats;
+                const wkdyPct = (weekday / yMax) * 100;
+                const wkndPct = (weekend / yMax) * 100;
+
+                return `
+                    <div class="bar-column group relative flex flex-col items-center justify-end h-full min-w-[68px] sm:min-w-[82px] max-w-[96px] flex-1">
+                        <!-- Hover Tooltip -->
+                        <div class="opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 absolute bottom-full mb-9 z-30 w-44 bg-slate-900 text-white text-[11px] rounded-xl p-2.5 shadow-xl">
+                            <p class="font-bold text-white truncate">${off.name}</p>
+                            <p class="text-[10px] text-amber-300 font-semibold mb-1.5">${off.rest.label}</p>
+                            <div class="space-y-1 border-t border-slate-700/80 pt-1">
+                                <div class="flex justify-between">
+                                    <span class="text-indigo-300">Weekday:</span>
+                                    <span class="font-bold">${weekday}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-emerald-300">Weekend:</span>
+                                    <span class="font-bold">${weekend}</span>
+                                </div>
+                                <div class="flex justify-between border-t border-slate-700 pt-1 font-extrabold">
+                                    <span>Total:</span>
+                                    <span>${total}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Total Duties Number Badge on Top of Bar -->
+                        <div class="bar-pill mb-1.5 px-2.5 py-0.5 rounded-full bg-slate-900 text-white text-xs font-extrabold shadow-xs select-none">
+                            ${total}
+                        </div>
+
+                        <!-- Stacked Vertical Bar -->
+                        <div onclick="openEditOfficerModal('${off.id}')" title="Click to edit ${off.name}"
+                             class="w-11 sm:w-14 h-full flex flex-col justify-end rounded-t-xl overflow-hidden cursor-pointer">
+                            <!-- Top Segment: Weekend Duties -->
+                            <div class="bar-segment w-full bg-emerald-500 hover:bg-emerald-400 flex items-center justify-center text-[10px] font-bold text-white overflow-hidden"
+                                 style="height: ${wkndPct}%">
+                                ${weekend > 0 && wkndPct >= 9 ? weekend : ''}
+                            </div>
+                            <!-- Bottom Segment: Weekday Duties -->
+                            <div class="bar-segment w-full bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-white overflow-hidden border-t border-white/20"
+                                 style="height: ${wkdyPct}%">
+                                ${weekday > 0 && wkdyPct >= 9 ? weekday : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            labelsContainer.innerHTML = enrichedOfficers.map(off => `
+                <button type="button" onclick="openEditOfficerModal('${off.id}')"
+                    class="min-w-[68px] sm:min-w-[82px] max-w-[96px] flex-1 text-center group focus:outline-none">
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-indigo-600 truncate transition-colors" title="Click to edit name">
+                        ${off.name}
+                    </p>
+                    <p class="text-[10px] font-medium text-slate-400 group-hover:text-indigo-500">
+                        ${off.badge}
+                    </p>
+                </button>
+            `).join('');
+        }
+
+        function renderOfficerSelectDropdown() {
+            const optionsHtml = officers.map(off =>
+                `<option value="${off.id}">${off.name} (${off.badge})</option>`
+            ).join('');
+
+            ['feed-officer-select', 'quick-daily-officer'].forEach(selectId => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                const prevVal = select.value;
+                select.innerHTML = optionsHtml;
+                if (officers.some(o => o.id === prevVal)) {
+                    select.value = prevVal;
+                }
+            });
+        }
+
+        function renderRestStatusCards(enrichedOfficers) {
+            const grid = document.getElementById('rest-status-grid');
+            const refBadge = document.getElementById('reference-today-badge');
+            if (!grid) return;
+
+            const todayStr = getReferenceDateStr();
+            if (refBadge) {
+                refBadge.querySelector('span').textContent = `Ref Date: ${formatFullDateDisplay(todayStr)}`;
+            }
+
+            if (enrichedOfficers.length === 0) {
+                grid.innerHTML = `<p class="text-xs text-slate-400 col-span-full py-2">No officers in roster.</p>`;
+                return;
+            }
+
+            const byRest = [...enrichedOfficers].sort((a, b) => b.rest.days - a.rest.days);
+
+            grid.innerHTML = byRest.map(off => {
+                const r = off.rest;
+                const lastText = r.lastDate ? `Last duty: ${formatFullDateDisplay(r.lastDate)}` : 'No completed duty on record';
+                const alreadyOnRefDate = Array.isArray(dailyLogs[todayStr]) && dailyLogs[todayStr].includes(off.id);
+
+                return `
+                    <div class="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/50 hover:bg-white transition-colors">
+                        <div class="min-w-0">
+                            <p class="text-sm font-bold text-slate-900 truncate">${off.name}</p>
+                            <p class="text-[11px] text-slate-500 truncate mt-0.5">${lastText}</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="px-2.5 py-1 rounded-full text-xs font-extrabold ${r.badgeClass}">
+                                ${r.label}
+                            </span>
+                            ${alreadyOnRefDate
+                                ? `<span class="px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-50 text-indigo-600">Assigned</span>`
+                                : `<button type="button" onclick="logOfficerOnRefDate('${off.id}')" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900 hover:bg-indigo-600 text-white transition-colors" title="Assign ${off.name} on ${todayStr}">+ Log</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderMonthlyCalendar() {
+            const grid = document.getElementById('calendar-days-grid');
+            const summaryEl = document.getElementById('calendar-summary-text');
+            if (!grid) return;
+
+            const ym = document.getElementById('calendar-month-input').value || '2026-11';
+            const [year, month] = ym.split('-').map(Number);
+            const firstDay = new Date(year, month - 1, 1).getDay();
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+            const todayStr = getReferenceDateStr();
+
+            let monthAssignmentCount = 0;
+            let cellsHtml = '';
+
+            for (let i = 0; i < totalCells; i++) {
+                const dayNum = i - firstDay + 1;
+                const colIdx = i % 7;
+                const isWknd = colIdx === 0 || colIdx === 6;
+
+                if (dayNum < 1 || dayNum > daysInMonth) {
+                    cellsHtml += `<div class="min-h-[96px] p-2 bg-slate-50/70"></div>`;
+                    continue;
+                }
+
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                const isToday = dateStr === todayStr;
+                const assignedIds = Array.isArray(dailyLogs[dateStr]) ? dailyLogs[dateStr] : [];
+                monthAssignmentCount += assignedIds.length;
+
+                const cellBg = isToday
+                    ? 'bg-amber-50/50 ring-2 ring-inset ring-amber-400'
+                    : isWknd
+                        ? 'bg-emerald-50/25 hover:bg-emerald-50/60'
+                        : 'bg-white hover:bg-indigo-50/40';
+
+                const badgesHtml = assignedIds.map(oid => {
+                    const off = officers.find(o => o.id === oid);
+                    if (!off) return '';
+                    const shortName = off.name.replace(/^(Capt\.|Lt\.|Insp\.|Sgt\.|Off\.)\s+/i, '');
+                    const pillBg = isWknd ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white';
+                    return `
+                        <div class="px-1.5 py-0.5 rounded-md text-[10px] font-bold truncate ${pillBg} shadow-2xs" title="${off.name} (${off.badge})">
+                            ${shortName}
+                        </div>
+                    `;
+                }).join('');
+
+                cellsHtml += `
+                    <div onclick="openDayDutyModal('${dateStr}')"
+                         class="min-h-[98px] p-2 cursor-pointer transition-colors flex flex-col justify-between group ${cellBg}">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-extrabold ${isToday ? 'px-1.5 py-0.5 rounded-md bg-amber-500 text-white' : isWknd ? 'text-emerald-700' : 'text-slate-700'}">
+                                ${dayNum}
+                            </span>
+                            <span class="opacity-0 group-hover:opacity-100 text-[10px] font-semibold text-indigo-600 transition-opacity">+ Assign</span>
+                        </div>
+                        <div class="space-y-1 flex-1">
+                            ${badgesHtml || `<span class="text-[10px] text-slate-300 group-hover:text-slate-400">No duty</span>`}
+                        </div>
+                    </div>
+                `;
+            }
+
+            grid.innerHTML = cellsHtml;
+            if (summaryEl) {
+                summaryEl.textContent = `${monthAssignmentCount} duty assignment${monthAssignmentCount === 1 ? '' : 's'} in ${FULL_MONTH_NAMES[month - 1]} ${year}`;
+            }
+        }
+
+        function renderRosterTable(enrichedOfficers, filter, searchQuery) {
+            const tbody = document.getElementById('roster-table-body');
+            const filtered = enrichedOfficers.filter(o =>
+                o.name.toLowerCase().includes(searchQuery) ||
+                o.badge.toLowerCase().includes(searchQuery)
+            );
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="py-10 text-center text-sm text-slate-400">
+                            No matching officers found.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(off => {
+                const { weekday, weekend, total } = off.stats;
+                const rest = off.rest;
+                const wkdyPct = total > 0 ? Math.round((weekday / total) * 100) : 0;
+                const wkndPct = total > 0 ? 100 - wkdyPct : 0;
+
+                return `
+                    <tr class="hover:bg-slate-50/90 transition-colors">
+                        <td class="py-3.5 px-5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0">
+                                    ${off.badge.replace('OFF-', '#')}
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-1.5">
+                                        <p class="font-semibold text-slate-900 truncate">${off.name}</p>
+                                        <button type="button" onclick="openEditOfficerModal('${off.id}')" class="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors" title="Edit Officer Name & Badge">
+                                            <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-slate-400">${off.badge}</p>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Days Since Last Duty -->
+                        <td class="py-3.5 px-4 text-center">
+                            <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold ${rest.badgeClass}">
+                                ${rest.label}
+                            </span>
+                            ${rest.lastDate ? `<p class="text-[10px] text-slate-400 mt-0.5">${rest.lastDate}</p>` : ''}
+                        </td>
+
+                        <!-- Weekday Stepper -->
+                        <td class="py-3.5 px-4">
+                            <div class="flex items-center justify-center gap-2">
+                                <button type="button" onclick="adjustDutyQuick('${off.id}', 'weekday', -1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 font-bold flex items-center justify-center transition-colors" title="Decrease Weekday Duty">-</button>
+                                <span class="w-8 text-center font-bold text-indigo-600">${weekday}</span>
+                                <button type="button" onclick="adjustDutyQuick('${off.id}', 'weekday', 1)" class="w-7 h-7 rounded-lg bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white font-bold flex items-center justify-center transition-colors" title="Increase Weekday Duty">+</button>
+                            </div>
+                        </td>
+
+                        <!-- Weekend Stepper -->
+                        <td class="py-3.5 px-4">
+                            <div class="flex items-center justify-center gap-2">
+                                <button type="button" onclick="adjustDutyQuick('${off.id}', 'weekend', -1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-700 font-bold flex items-center justify-center transition-colors" title="Decrease Weekend Duty">-</button>
+                                <span class="w-8 text-center font-bold text-emerald-600">${weekend}</span>
+                                <button type="button" onclick="adjustDutyQuick('${off.id}', 'weekend', 1)" class="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white font-bold flex items-center justify-center transition-colors" title="Increase Weekend Duty">+</button>
+                            </div>
+                        </td>
+
+                        <!-- Total Pill -->
+                        <td class="py-3.5 px-4 text-center">
+                            <span class="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-extrabold bg-slate-900 text-white">
+                                ${total}
+                            </span>
+                        </td>
+
+                        <!-- Percentage Bar -->
+                        <td class="py-3.5 px-4 hidden md:table-cell">
+                            <div class="w-36 mx-auto">
+                                <div class="flex justify-between text-[10px] font-semibold mb-1">
+                                    <span class="text-indigo-600">${wkdyPct}% WkDay</span>
+                                    <span class="text-emerald-600">${wkndPct}% WkEnd</span>
+                                </div>
+                                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                                    <div class="bg-indigo-600 h-full" style="width: ${wkdyPct}%"></div>
+                                    <div class="bg-emerald-500 h-full" style="width: ${wkndPct}%"></div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Edit & Delete Actions -->
+                        <td class="py-3.5 px-5 text-right">
+                            <div class="inline-flex items-center justify-end gap-1">
+                                <button type="button" onclick="openEditOfficerModal('${off.id}')" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit Officer Name">
+                                    <i data-lucide="user-pen" class="w-4 h-4"></i>
+                                    <span class="hidden sm:inline">Edit</span>
+                                </button>
+                                <button type="button" onclick="deleteOfficer('${off.id}')" class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Delete Officer Bar">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    <span class="hidden sm:inline">Delete</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderMonthlyMatrix(enrichedOfficers) {
+            const tbody = document.getElementById('monthly-matrix-body');
+            if (!tbody) return;
+            const year = document.getElementById('matrix-year-select').value || '2026';
+
+            if (enrichedOfficers.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="14" class="py-8 text-center text-slate-400">
+                            No officers on roster to display in monthly matrix.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = enrichedOfficers.map(off => {
+                let annualTotal = 0;
+                let monthCells = '';
+
+                for (let m = 1; m <= 12; m++) {
+                    const ym = `${year}-${String(m).padStart(2, '0')}`;
+                    const rec = (off.records && off.records[ym]) || { weekday: 0, weekend: 0 };
+                    const w1 = Number(rec.weekday || 0);
+                    const w2 = Number(rec.weekend || 0);
+                    const tot = w1 + w2;
+                    annualTotal += tot;
+
+                    monthCells += `
+                        <td onclick="openEditCellModal('${off.id}', '${ym}')"
+                            title="Click to edit ${off.name} (${MONTH_NAMES[m - 1]} ${year})"
+                            class="py-2.5 px-2 text-center border-l border-slate-100 cursor-pointer hover:bg-indigo-50/70 transition-colors">
+                            <p class="font-extrabold text-sm ${tot > 0 ? 'text-slate-900' : 'text-slate-300'}">${tot}</p>
+                            <p class="text-[10px] font-medium ${tot > 0 ? 'text-slate-500' : 'text-slate-300'}">
+                                <span class="text-indigo-600">${w1}</span>/<span class="text-emerald-600">${w2}</span>
+                            </p>
+                        </td>
+                    `;
+                }
+
+                return `
+                    <tr class="hover:bg-slate-50/80 transition-colors">
+                        <td class="py-2.5 px-4 sticky left-0 bg-white z-10 border-r border-slate-200">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="min-w-0">
+                                    <p class="font-bold text-slate-900 truncate">${off.name}</p>
+                                    <p class="text-[10px] text-slate-400">${off.badge}</p>
+                                </div>
+                                <button type="button" onclick="openEditOfficerModal('${off.id}')" class="p-1 text-slate-400 hover:text-indigo-600 rounded" title="Rename Officer">
+                                    <i data-lucide="pencil" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </td>
+                        ${monthCells}
+                        <td class="py-2.5 px-4 text-center font-extrabold text-sm bg-slate-50 text-slate-900 border-l border-slate-200">
+                            ${annualTotal}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Bootstrap application on load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            const refStr = getReferenceDateStr();
+            const qDateInput = document.getElementById('quick-daily-date');
+            const calMonthInput = document.getElementById('calendar-month-input');
+            if (qDateInput) qDateInput.value = refStr;
+            if (calMonthInput) calMonthInput.value = refStr.slice(0, 7);
+
+            updateQuickDailyDayHint();
+            renderDashboard();
+
+            document.getElementById('cell-weekday-input').addEventListener('input', updateCellPreviewTotal);
+            document.getElementById('cell-weekend-input').addEventListener('input', updateCellPreviewTotal);
+        });
+    </script>
+</body>
+</html>
